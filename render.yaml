@@ -1,0 +1,61 @@
+services:
+  - type: web
+    name: pixmatch-api
+    runtime: python
+    region: singapore          # change to: ohio / frankfurt / oregon as needed
+    plan: starter              # $7/mo — no cold starts, 512 MB RAM
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn -c gunicorn.conf.py "main:application"
+    healthCheckPath: /health
+    autoDeploy: true
+
+    envVars:
+      # ── Flask ──────────────────────────────────────────────────────────
+      - key: FLASK_ENV
+        value: production
+      - key: SECRET_KEY
+        generateValue: true          # Render auto-generates a secure random value
+      - key: PORT
+        value: "10000"               # Render overrides this automatically
+
+      # ── Database (Supabase PgBouncer) ──────────────────────────────────
+      # Set these in the Render dashboard → Environment
+      - key: DB_HOST
+        sync: false
+      - key: DB_NAME
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_PORT
+        value: "6543"
+
+      # ── Redis (Upstash) ───────────────────────────────────────────────
+      # Paste the full rediss:// URL from Upstash dashboard
+      - key: REDIS_URL
+        sync: false
+
+      # ── JWT ───────────────────────────────────────────────────────────
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+
+      # ── Cloudinary ───────────────────────────────────────────────────
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+
+      # ── SendGrid ─────────────────────────────────────────────────────
+      - key: SENDGRID_API_KEY
+        sync: false
+      - key: FROM_EMAIL
+        sync: false
+
+      # ── Frontend URL (your Vercel URL — for CORS + reset-password emails)
+      - key: FRONTEND_URL
+        sync: false               # e.g. https://pixmatch.vercel.app
