@@ -14,7 +14,11 @@ bind = f"0.0.0.0:{_os.environ.get('PORT', '5000')}"
 # efficient than sync workers which block the entire process on every I/O wait.
 worker_class = "gthread"
 threads = 4
-workers = max(2, multiprocessing.cpu_count())  # fewer workers, more threads each
+# Render sets WEB_CONCURRENCY automatically based on instance RAM.
+# Free tier (512 MB): 1 worker. Starter (512 MB–2 GB): 2–4 workers.
+# Default to 1 to avoid OOM on free tier with large ML deps (insightface/onnxruntime).
+import os as _os2
+workers = int(_os2.environ.get("WEB_CONCURRENCY", "1"))
 
 # Timeouts — generous for face match downloads, but gunicorn will kill workers
 # that exceed this limit.

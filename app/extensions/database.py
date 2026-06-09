@@ -59,8 +59,13 @@ def init_db_pool(settings) -> None:
             settings.DB_MAX_CONN,
         )
     except Exception as exc:
-        logger.critical("Failed to initialise DB pool: %s", exc)
-        raise
+        logger.critical(
+            "Failed to initialise DB pool: %s — app will start but DB calls will fail. "
+            "Check DB_HOST / DB_USER / DB_PASSWORD env vars and ensure Supabase is not paused.",
+            exc,
+        )
+        # Do NOT raise — let the app start so Render's health probe gets a 200.
+        # DB errors will surface per-request via get_db() raising RuntimeError.
 
 
 @contextmanager

@@ -14,39 +14,47 @@ _client: redis.Redis | None = None
 
 def init_redis() -> None:
     global _client
-    if config.REDIS_URL:
-        # URL-based init for Upstash / cloud Redis (rediss:// for TLS)
-        _client = redis.from_url(
-            config.REDIS_URL,
+    try:
+        if config.REDIS_URL:
+            _client = redis.from_url(
+                config.REDIS_URL,
+                decode_responses=True,
+                socket_connect_timeout=5,
+                socket_timeout=5,
+                retry_on_timeout=True,
+                health_check_interval=30,
+            )
+            _client.ping()
+            logger.info("Redis connected via REDIS_URL")
+            return
+
+        kwargs: dict = dict(
+            host=config.REDIS_HOST,
+            port=config.REDIS_PORT,
+            db=config.REDIS_DB,
             decode_responses=True,
             socket_connect_timeout=5,
             socket_timeout=5,
             retry_on_timeout=True,
             health_check_interval=30,
         )
+        if config.REDIS_PASSWORD:
+            kwargs["password"] = config.REDIS_PASSWORD
+        if config.REDIS_TLS:
+            kwargs["ssl"] = True
+            kwargs["ssl_cert_reqs"] = "required"
+
+        _client = redis.Redis(**kwargs)
         _client.ping()
-        logger.info("Redis connected via REDIS_URL")
-        return
+        logger.info("Redis connected at %s:%d", config.REDIS_HOST, config.REDIS_PORT)
 
-    kwargs: dict = dict(
-        host=config.REDIS_HOST,
-        port=config.REDIS_PORT,
-        db=config.REDIS_DB,
-        decode_responses=True,
-        socket_connect_timeout=5,
-        socket_timeout=5,
-        retry_on_timeout=True,
-        health_check_interval=30,
-    )
-    if config.REDIS_PASSWORD:
-        kwargs["password"] = config.REDIS_PASSWORD
-    if config.REDIS_TLS:
-        kwargs["ssl"] = True
-        kwargs["ssl_cert_reqs"] = "required"
-
-    _client = redis.Redis(**kwargs)
-    _client.ping()
-    logger.info("Redis connected at %s:%d", config.REDIS_HOST, config.REDIS_PORT)
+    except Exception as exc:
+        logger.critical(
+            "Redis connection failed at startup: %s — app will start but auth/rate-limit "
+            "features will be degraded. Check REDIS_URL env var.",
+            exc,
+        )
+        # Do NOT raise — app starts so Render health probe gets 200.
 
 
 def get_redis() -> redis.Redis:
