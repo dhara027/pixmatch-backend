@@ -1,24 +1,19 @@
 """
 Gunicorn configuration for production.
-Uses gthread workers for better concurrency on I/O-bound workloads.
+Uses sync workers — reliable on Render free tier (512 MB).
 preload_app is disabled — psycopg2 connection pools are NOT fork-safe.
 """
-import multiprocessing
-
-# Bind address — Render assigns a dynamic $PORT; fallback to 5000 for local dev
 import os as _os
+
+# Bind address — Render injects $PORT; fallback to 5000 for local dev
 bind = f"0.0.0.0:{_os.environ.get('PORT', '5000')}"
 
-# gthread workers: each worker handles requests concurrently via threads.
-# For I/O-bound Flask (Cloudinary uploads, Redis, DB calls), this is far more
-# efficient than sync workers which block the entire process on every I/O wait.
-worker_class = "gthread"
-threads = 4
-# Render sets WEB_CONCURRENCY automatically based on instance RAM.
-# Free tier (512 MB): 1 worker. Starter (512 MB–2 GB): 2–4 workers.
-# Default to 1 to avoid OOM on free tier with large ML deps (insightface/onnxruntime).
-import os as _os2
-workers = int(_os2.environ.get("WEB_CONCURRENCY", "1"))
+# sync workers: one request per worker, no threading complexity.
+# Render free tier has 512 MB RAM and large ML deps (insightface/onnxruntime),
+# so gthread's extra thread overhead can cause OOM or stall port binding.
+# WEB_CONCURRENCY=1 is set explicitly on Render to ensure exactly 1 worker.
+worker_class = "sync"
+workers = int(_os.environ.get("WEB_CONCURRENCY", "1"))
 
 # Timeouts — generous for face match downloads, but gunicorn will kill workers
 # that exceed this limit.
@@ -54,7 +49,7 @@ preload_app = False
 
 
 def on_starting(server):
-    server.log.info("Starting PixMatch API server (gthread, workers=%d, threads=%d)", workers, threads)
+    server.log.info("Starting PixMatch API server (sync, workers=%d)", workers)
 
 
 def worker_exit(server, worker):
