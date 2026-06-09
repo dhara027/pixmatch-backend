@@ -128,13 +128,15 @@ def create_app() -> Flask:
             checks["redis"] = f"error: {type(exc).__name__}"
             overall = "degraded"
 
-        status_code = 200 if overall == "ok" else 503
+        # Always return 200 so Render's health probe doesn't kill the service
+        # when a dependency is temporarily unavailable at boot.
+        # Degraded status is visible in the body for monitoring.
         return jsonify({
             "status": overall,
             "checks": checks,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "env": config.FLASK_ENV,
-        }), status_code
+        }), 200
 
     # ── Serve React frontend (built dist/) ────────────────────────────────────
     # On Render: frontend is hosted on Vercel, dist/ is absent — serve API info.
