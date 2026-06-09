@@ -30,7 +30,6 @@ cloudinary==1.40.0
 
 # Image Processing
 Pillow==10.3.0
-pillow-heif==0.16.0
 
 # Face Recognition
 insightface==0.7.3

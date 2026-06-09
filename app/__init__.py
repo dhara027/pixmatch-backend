@@ -150,10 +150,12 @@ def create_app() -> Flask:
     return app
 
 
-# ── Celery App ────────────────────────────────────────────────────────────────
-def create_celery(app: Flask = None):
-    from celery import Celery
+# ── Celery App (lazy — avoids kombu/redis-py crash at module import time) ────
+_celery_app = None
 
+
+def create_celery():
+    from celery import Celery
     celery = Celery(
         __name__,
         broker=config.celery_broker_url(),
@@ -173,4 +175,17 @@ def create_celery(app: Flask = None):
     return celery
 
 
-celery_app = create_celery()
+def get_celery_app():
+    global _celery_app
+    if _celery_app is None:
+        _celery_app = create_celery()
+    return _celery_app
+
+
+# Keep celery_app as a lazy alias so tasks.py `from app import celery_app` still works.
+class _LazyCelery:
+    def __getattr__(self, name):
+        return getattr(get_celery_app(), name)
+
+
+celery_app = _LazyCelery()
