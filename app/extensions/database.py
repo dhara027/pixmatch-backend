@@ -14,6 +14,7 @@ PgBouncer transaction mode restrictions:
   - Regular unnamed cursors are fine
 """
 import logging
+import threading
 from contextlib import contextmanager
 from typing import Generator
 
@@ -24,6 +25,10 @@ from psycopg2.extras import RealDictCursor
 logger = logging.getLogger(__name__)
 
 _pool: psycopg2.pool.ThreadedConnectionPool | None = None
+
+# Hard timeout for any DB operation — prevents worker starvation when
+# PgBouncer accepts the connection but PostgreSQL never responds.
+_DB_TIMEOUT_SECONDS = 8.0
 
 
 def init_db_pool(settings) -> None:
@@ -71,40 +76,63 @@ def init_db_pool(settings) -> None:
 @contextmanager
 def get_db() -> Generator:
     """
-    Yield a connection from the pool.
-    Commits on success, rolls back on exception, always returns conn to pool.
-
-    Usage:
-        with get_db() as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT ...")
-                row = cur.fetchone()   # returns dict-like row (RealDictCursor)
+    Yield a connection from the pool with an 8-second hard timeout.
+    If any DB operation blocks longer than _DB_TIMEOUT_SECONDS (e.g. PgBouncer
+    accepts the TCP connection but PostgreSQL never responds), the connection is
+    forcibly closed from a daemon thread so the worker is freed and Flask can
+    return a 500 instead of leaving Vercel's proxy to time out with 502.
     """
     if _pool is None:
         raise RuntimeError("DB pool not initialised — call init_db_pool() first")
     conn = _pool.getconn()
     _returned = False
+    _timed_out = threading.Event()
+
+    def _force_close():
+        _timed_out.set()
+        logger.error("DB query exceeded %.1fs — force-closing connection", _DB_TIMEOUT_SECONDS)
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    _timer = threading.Timer(_DB_TIMEOUT_SECONDS, _force_close)
+    _timer.daemon = True
+
     try:
-        # Detect stale / broken connections and replace them
         if conn.closed or conn.status != psycopg2.extensions.STATUS_READY:
             _pool.putconn(conn, close=True)
             conn = _pool.getconn()
         conn.autocommit = False
+        _timer.start()
         yield conn
-        conn.commit()
+        _timer.cancel()
+        if not conn.closed:
+            conn.commit()
     except psycopg2.OperationalError:
-        # Connection dropped mid-request — discard it, don't return to pool
+        _timer.cancel()
+        if _timed_out.is_set():
+            logger.error("DB timeout: operation exceeded %.1fs", _DB_TIMEOUT_SECONDS)
         try:
             conn.rollback()
         except Exception:
             pass
-        _pool.putconn(conn, close=True)
+        try:
+            _pool.putconn(conn, close=True)
+        except Exception:
+            pass
         _returned = True
         raise
     except Exception:
-        conn.rollback()
+        _timer.cancel()
+        try:
+            if not conn.closed:
+                conn.rollback()
+        except Exception:
+            pass
         raise
     finally:
+        _timer.cancel()
         if not _returned:
             try:
                 _pool.putconn(conn)

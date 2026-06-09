@@ -118,6 +118,23 @@ def create_app() -> Flask:
     def ping():
         return "pong", 200
 
+    @app.route("/api/v1/debug/db")
+    @limiter.exempt
+    def debug_db():
+        import time
+        t0 = time.time()
+        try:
+            from app.extensions.database import get_db
+            with get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT 1 AS ok")
+                    row = cur.fetchone()
+            elapsed = round(time.time() - t0, 3)
+            return jsonify({"db": "ok", "elapsed_s": elapsed, "row": dict(row)}), 200
+        except Exception as exc:
+            elapsed = round(time.time() - t0, 3)
+            return jsonify({"db": "error", "elapsed_s": elapsed, "error": str(exc)}), 500
+
     # ── Serve React frontend (built dist/) ────────────────────────────────────
     # On Render: frontend is hosted on Vercel, dist/ is absent — serve API info.
     # Locally / Docker: dist/ is present — serve the SPA.
