@@ -9,11 +9,9 @@ import os as _os
 bind = f"0.0.0.0:{_os.environ.get('PORT', '5000')}"
 
 # sync workers: one request per worker, no threading complexity.
-# Render free tier has 512 MB RAM and large ML deps (insightface/onnxruntime),
-# so gthread's extra thread overhead can cause OOM or stall port binding.
-# WEB_CONCURRENCY=1 is set explicitly on Render to ensure exactly 1 worker.
+# 2 workers: one can serve health probes while the other processes a slow request.
 worker_class = "sync"
-workers = int(_os.environ.get("WEB_CONCURRENCY", "1"))
+workers = int(_os.environ.get("WEB_CONCURRENCY", "2"))
 
 # Timeouts — generous for face match downloads, but gunicorn will kill workers
 # that exceed this limit.

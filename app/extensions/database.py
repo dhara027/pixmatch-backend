@@ -43,12 +43,12 @@ def init_db_pool(settings) -> None:
             password=settings.DB_PASSWORD,
             cursor_factory=RealDictCursor,
             connect_timeout=5,
-            options="-c statement_timeout=30000",
+            options="-c statement_timeout=8000",
             sslmode="require",
             keepalives=1,
-            keepalives_idle=30,
-            keepalives_interval=5,
-            keepalives_count=3,
+            keepalives_idle=5,
+            keepalives_interval=3,
+            keepalives_count=2,
         )
         logger.info(
             "DB pool initialised — host=%s port=%s db=%s (min=%d max=%d)",
