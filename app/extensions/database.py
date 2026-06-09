@@ -42,7 +42,7 @@ def init_db_pool(settings) -> None:
             user=settings.DB_USER,
             password=settings.DB_PASSWORD,
             cursor_factory=RealDictCursor,
-            connect_timeout=10,
+            connect_timeout=5,
             options="-c statement_timeout=30000",
             sslmode="require",
             keepalives=1,

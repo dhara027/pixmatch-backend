@@ -106,41 +106,18 @@ def create_app() -> Flask:
     app.register_blueprint(photos_bp, url_prefix="/api/v1")
     app.register_blueprint(face_match_bp, url_prefix="/api/v1/face-match")
 
-    # ── Health Check (probes DB and Redis, not just Flask) ────────────────────
+    # ── Health / Ping (Render probe endpoint) ────────────────────────────────
+    # Must respond instantly with 200 — never probe DB/Redis here.
+    # Render kills the deploy if this doesn't return 200 within its timeout.
     @app.route("/health")
     @limiter.exempt
     def health():
-        from datetime import datetime, timezone
-        checks = {"flask": "ok", "db": "unknown", "redis": "unknown"}
-        overall = "ok"
+        return jsonify({"status": "ok", "service": "PixMatch API"}), 200
 
-        try:
-            from app.extensions.database import get_db
-            with get_db() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("SELECT 1")
-            checks["db"] = "ok"
-        except Exception as exc:
-            checks["db"] = f"error: {type(exc).__name__}"
-            overall = "degraded"
-
-        try:
-            from app.extensions.redis_ext import get_redis
-            get_redis().ping()
-            checks["redis"] = "ok"
-        except Exception as exc:
-            checks["redis"] = f"error: {type(exc).__name__}"
-            overall = "degraded"
-
-        # Always return 200 so Render's health probe doesn't kill the service
-        # when a dependency is temporarily unavailable at boot.
-        # Degraded status is visible in the body for monitoring.
-        return jsonify({
-            "status": overall,
-            "checks": checks,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "env": config.FLASK_ENV,
-        }), 200
+    @app.route("/ping")
+    @limiter.exempt
+    def ping():
+        return "pong", 200
 
     # ── Serve React frontend (built dist/) ────────────────────────────────────
     # On Render: frontend is hosted on Vercel, dist/ is absent — serve API info.
