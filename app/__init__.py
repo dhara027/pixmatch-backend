@@ -76,8 +76,7 @@ def create_app() -> Flask:
     app.config["RATELIMIT_STORAGE_URI"] = config.redis_url()
     app.config["RATELIMIT_DEFAULT_LIMITS"] = ["500 per day", "100 per hour"]
     app.config["RATELIMIT_HEADERS_ENABLED"] = True
-    # Belt-and-suspenders: swallow storage errors so a Redis blip at startup
-    # never causes health-probe failures (limiter_ext also sets fail_on_storage_error=False).
+    # Swallow Redis storage errors so a cold-start blip never fails the health probe.
     app.config["RATELIMIT_SWALLOW_ERRORS"] = True
     limiter.init_app(app)
 
